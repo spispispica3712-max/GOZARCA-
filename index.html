@@ -268,10 +268,25 @@ function renderYakus(){
 
     const nums=y.cards.map(c=>nameToNumber[c]);
     const selected=selectedYakus.has(i);
-    const missing=nums.some(n=>manuallyDisabledCards.has(n));
     const perm=permanentlyDisabled.includes(y.name);
 
-    if((missing && !selected) || perm)
+    // ▼ 他役によるロック判定をその場で計算
+    let roleBlocked = false;
+
+    selectedYakus.forEach(selIndex=>{
+      if(selIndex !== i){
+        yakus[selIndex].cards.forEach(card=>{
+          if(nums.includes(nameToNumber[card])){
+            roleBlocked = true;
+          }
+        });
+      }
+    });
+
+    const manuallyBlocked = nums.some(n=>manuallyDisabledCards.has(n));
+    const cannotUse = perm || manuallyBlocked || roleBlocked;
+
+    if(cannotUse && !selected)
       div.classList.add("disabled");
 
     if(selected)
@@ -304,7 +319,6 @@ function renderYakus(){
     yakuDiv.appendChild(div);
   });
 }
-
 function nextTurn(){
   selectedYakus.clear();
   manuallyDisabledCards.clear();
@@ -317,5 +331,4 @@ renderNumbers();
 
 </script>
 </body>
-
 </html>
