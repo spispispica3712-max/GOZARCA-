@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body { font-family:sans-serif; }
+
+.number, .yaku{
+  display:inline-block;
+  padding:6px;
+  margin:4px;
+  border:1px solid black;
+  cursor:pointer;
+  font-size:13px;
+  background:white;
+}
+
+.disabled{
+  background:#ccc;
+}
+
+.roleLocked{
+  background:#aaa;
+  pointer-events:none;
+}
+
+.selected{
+  background:#90ee90;
+}
+
+.hoverBox{
+  margin-top:10px;
+  padding:10px;
+  border:1px solid black;
+  min-height:180px;
+  white-space:pre-line;
+}
+</style>
+</head>
+<body>
+
+<h3>札（24枚）</h3>
+<div id="numbers"></div>
+
+<h3>役（19種）</h3>
+<div id="yakus"></div>
+
+<button onclick="nextTurn()">次のターン（全解除）</button>
+
+<h3>情報</h3>
+<div class="hoverBox" id="hoverInfo"></div>
+
+<script>
+
+const numberDiv = document.getElementById("numbers");
+const yakuDiv = document.getElementById("yakus");
+const hoverInfo = document.getElementById("hoverInfo");
+
+const cards = {
+1:"松に鶴",2:"松の短冊",3:"梅に鶯",4:"梅の短冊",
+5:"桜に幕",6:"桜の短冊",7:"藤に時鳥",8:"藤の短冊",
+9:"菖蒲に八ツ橋",10:"菖蒲の短冊",11:"牡丹に蝶",12:"牡丹の短冊",
+13:"萩に猪",14:"萩の短冊",15:"芒に月",16:"芒に雁",
+17:"菊に盃",18:"菊の短冊",19:"紅葉に鹿",20:"紅葉の短冊",
+21:"柳に男",22:"柳に燕",23:"柳の短冊",24:"桐に鳳凰"
+};
+
+const nameToNumber = Object.fromEntries(
+  Object.entries(cards).map(([k,v]) => [v, Number(k)])
+);
+
+const yakus = [
+
+{ name:"華舞:五光",
+cards:["松に鶴","桜に幕","芒に月","柳に男","桐に鳳凰"],
+declare:"ターン終わり",activate:"ターン終わり",
+condition:"全員【華舞:八八】【華舞:こいこい】",
+cost:"絶対",effect:"HP5で復活"},
+
+{ name:"華合わせ:四光",
+cards:["松に鶴","桜に幕","芒に月","桐に鳳凰"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:華合わせ】",
+cost:"成功時",effect:"被ダメージ-1"},
+
+{ name:"八八:表菅原",
+cards:["松に鶴","梅に鶯","桜に幕"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞八八】",
+cost:"成功時",effect:"表菅原役者3名に特殊ステータス不屈を付与"},
+
+{ name:"八八:裏菅原",
+cards:["松の短冊","梅の短冊","桜の短冊"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞八八】",
+cost:"成功時",effect:"次のターン攻撃時1/2成功で2回攻撃"},
+
+{ name:"華合わせ:松桐坊主",
+cards:["松に鶴","芒に月","桐に鳳凰"],
+declare:"任意",activate:"任意",
+condition:"全員【華舞:華合わせ】",
+cost:"成功時",effect:"味方が即死級のダメージを受けた際に3名でダメージ等分し代わりに受ける。ターン中1回まで"},
+
+{ name:"こいこい:雨四光",
+cards:["松に鶴","桜に幕","芒に月","柳に男","桐に鳳凰"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:こいこい】",
+cost:"成功時",effect:"任意1名ステ複製し任意の特殊ステを自分たち以外の3名に付与"},
+
+{ name:"八八:飲み",
+cards:["桜に幕","芒に月","菊に盃"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:八八】",
+cost:"成功時",effect:"全員HP1d5回復。ロールは3人の最出目高"},
+
+{ name:"こいこい:花見酒・月見酒",
+cards:["桜に幕","芒に月","菊に盃"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:こいこい】",
+cost:"成功時",effect:"自身のHP-1d3後味方全員MP1d10回復。ロールは3人の最出目高"},
+
+{ name:"華合わせ:雨流し",
+cards:["柳に男","柳に燕","柳の短冊"],
+declare:"任意",activate:"任意",
+condition:"全員【華舞:華合わせ】",
+cost:"成功時。決定的成功を通常成功に確定成功を失敗に落とす場合2倍",effect:"ターン中1回KPのダイスの成功をなかったことにする"},
+
+{ name:"華合わせ:種",
+cards:["梅に鶯","藤に時鳥","菖蒲に八ツ橋","芒に雁","菊に盃"],
+declare:"役者1名の手番",activate:"役者1名の手番",
+condition:"1名【華舞:華合わせ】",
+cost:"成功時",effect:"任意の味方1d3名を任意の地点まで移動"},
+
+{ name:"こいこい:種",
+cards:["梅に鶯","藤に時鳥","菖蒲に八ツ橋","牡丹に蝶","萩に猪","芒に雁","菊に盃","紅葉に鹿","柳に燕"],
+declare:"ターンはじめ",activate:"ターンはじめ",
+condition:"5名【華舞:こいこい】",
+cost:"成功時",effect:"種役者全員のHPを－1d3し発狂解除(全員成功の場合自身のターンで技能値の1/2の値で行動可能。また自身が発狂している場合【華舞:こいこい】-20)"},
+
+{ name:"八八:種",
+cards:["藤に時鳥","菖蒲に八ツ橋","牡丹に蝶","萩に猪","芒に雁","菊に盃","紅葉に鹿","柳に燕"],
+declare:"DEX最早",activate:"5名成功時",
+condition:"5名【華舞:八八】",
+cost:"成功時",effect:"1d10+成功人数の装甲貫通攻撃(5名成功後1人でも別行動を行う場合ダメージ加算ロール不可)"},
+
+{ name:"華合わせ:猪鹿蝶",
+cards:["萩に猪","紅葉に鹿","牡丹に蝶"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:華合わせ】",
+cost:"成功時",effect:"戦闘中任意の2名に装甲貫通能力付与"},
+
+{ name:"華合わせ:短冊",
+cards:["松の短冊","梅の短冊","桜の短冊","藤の短冊","菖蒲の短冊","牡丹の短冊","萩の短冊","菊の短冊","紅葉の短冊","柳の短冊"],
+declare:"任意の者1名の手番",activate:"任意の者1名の手番",
+condition:"【華舞:華合わせ】",
+cost:"成功時",effect:"成功した者が技能値-20成功時範囲外の対象にダメージロールや回復ロールを行使可能"},
+
+{ name:"八八:赤短",
+cards:["藤の短冊","菖蒲の短冊","萩の短冊","柳の短冊"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:八八】",
+cost:"成功時",effect:"全員がロールした1d30の合計を持ち点として味方の技能値ロールの結果を減算可能(重複不可で追加で行った場合加算されず新規の持ち点となる。加算不可。SANチェックや敵のロールへの使用は不可)"},
+
+{ name:"こいこい:赤短",
+cards:["藤の短冊","菖蒲の短冊","萩の短冊","柳の短冊"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:こいこい】",
+cost:"成功時",effect:"戦闘中全員の華舞+5"},
+
+{ name:"こいこい:裏菅原",
+cards:["松の短冊","梅の短冊","桜の短冊"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:こいこい】",
+cost:"成功時",effect:"戦闘中、ダメージロールを行うごとに〈花舞：こいこい〉をロールし、追加でMP1d3を消費することで、ダメージボーナスを＋1、＋1d4、＋1d6することができる。追加ダメージボーナスは消費MP量に比例する"},
+
+{ name:"八八:青短",
+cards:["牡丹の短冊","菊の短冊","紅葉の短冊"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:八八】",
+cost:"成功時",effect:"全員がロールした1d10の合計値を障壁とし任意の1名に付与障壁はダメージを受ける度に肩代わりする(障壁が残ってる限り追加で行うことができない)"},
+
+{ name:"こいこい:青短",
+cards:["牡丹の短冊","菊の短冊","紅葉の短冊"],
+declare:"DEX最早",activate:"DEX最遅",
+condition:"全員【華舞:こいこい】",
+cost:"成功時",effect:"青短役者3名に特殊ステータス可視を付与"}
+
+];
+
+const permanentlyDisabled = [
+"華合わせ:種",
+"八八:種",
+"華合わせ:短冊"
+];
+
+let manuallyDisabledCards = new Set();
+let selectedYakus = new Set();
+
+function getUsedByRole(){
+  let used = new Set();
+  selectedYakus.forEach(i=>{
+    yakus[i].cards.forEach(c=>{
+      used.add(nameToNumber[c]);
+    });
+  });
+  return used;
+}
+
+function renderNumbers(){
+  numberDiv.innerHTML="";
+  const usedByRole = getUsedByRole();
+
+  Object.entries(cards).forEach(([num,name])=>{
+    const n = Number(num);
+    const div = document.createElement("div");
+    div.className="number";
+    div.innerText=`${num}:${name}`;
+
+    if(manuallyDisabledCards.has(n))
+      div.classList.add("disabled");
+
+    if(usedByRole.has(n))
+      div.classList.add("roleLocked");
+
+    div.onclick=()=>{
+      if(usedByRole.has(n)) return;
+
+      if(manuallyDisabledCards.has(n))
+        manuallyDisabledCards.delete(n);
+      else
+        manuallyDisabledCards.add(n);
+
+      renderNumbers();
+      renderYakus();
+    };
+
+    div.onmouseenter=()=>{
+      const relatedYakus = yakus
+        .filter(y => y.cards.includes(name))
+        .map(y => y.name);
+
+      let text = `札情報：${name}\n\n含まれる役：`;
+
+      if (relatedYakus.length === 0) {
+        text += "\nなし";
+      } else {
+        text += "\n・" + relatedYakus.join("\n・");
+      }
+
+      hoverInfo.innerText = text;
+    };
+
+    div.onmouseleave=()=>{
+      hoverInfo.innerText="";
+    };
+
+    numberDiv.appendChild(div);
+  });
+}
+
+function renderYakus(){
+  yakuDiv.innerHTML="";
+
+  yakus.forEach((y,i)=>{
+    const div=document.createElement("div");
+    div.className="yaku";
+    div.innerText=y.name;
+
+    const nums=y.cards.map(c=>nameToNumber[c]);
+    const selected=selectedYakus.has(i);
+    const missing=nums.some(n=>manuallyDisabledCards.has(n));
+    const perm=permanentlyDisabled.includes(y.name);
+
+    if((missing && !selected) || perm)
+      div.classList.add("disabled");
+
+    if(selected)
+      div.classList.add("selected");
+
+    div.onclick=()=>{
+      if(div.classList.contains("disabled")) return;
+
+      if(selected) selectedYakus.delete(i);
+      else selectedYakus.add(i);
+
+      renderYakus();
+      renderNumbers();
+    };
+
+    div.onmouseenter=()=>{
+      hoverInfo.innerText =
+`必要札：${y.cards.join("、")}
+宣言：${y.declare}
+発動：${y.activate}
+条件：${y.condition}
+コスト：${y.cost}
+効果：${y.effect}`;
+    };
+
+    div.onmouseleave=()=>{
+      hoverInfo.innerText="";
+    };
+
+    yakuDiv.appendChild(div);
+  });
+}
+
+function nextTurn(){
+  selectedYakus.clear();
+  manuallyDisabledCards.clear();
+  renderYakus();
+  renderNumbers();
+}
+
+renderYakus();
+renderNumbers();
+
+</script>
+</body>
+
+</html>
